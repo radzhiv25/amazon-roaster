@@ -133,40 +133,86 @@ export async function generateRoast(
   mode: RoastMode,
   config: {
     model: string;
-    baseUrl: string;
+    baseUrl?: string;
+    apiKey?: string;
+    apiBaseUrl?: string;
     personaName?: string;
     roastLanguage?: RoastLanguage;
   }
 ): Promise<RoastResponse> {
-  const { model, baseUrl, personaName = "Brenda", roastLanguage = "english" } = config;
+  const { model, baseUrl, apiKey, apiBaseUrl, personaName = "Brenda", roastLanguage = "english" } = config;
+  const messages = [
+    { role: "system", content: buildSystemPrompt(personaName) },
+    { role: "user", content: buildUserPrompt(product, mode, personaName, roastLanguage) },
+  ] as const;
 
-  const response = await fetch(`${baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      messages: [
-        { role: "system", content: buildSystemPrompt(personaName) },
-        { role: "user", content: buildUserPrompt(product, mode, personaName, roastLanguage) },
-      ],
-      options: { num_predict: 900, temperature: 0.9 },
-    }),
-  });
+  let text = "";
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Ollama request failed (${response.status}): ${detail.slice(0, 500)}`);
+  if (apiKey?.trim()) {
+    const endpoint = (apiBaseUrl?.trim() || "https://openrouter.ai/api/v1").replace(/\/$/, "");
+    const response = await fetch(`${endpoint}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.9,
+        max_tokens: 900,
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`LLM API request failed (${response.status}): ${detail.slice(0, 500)}`);
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string } | string;
+    };
+    text = payload.choices?.[0]?.message?.content ?? "";
+    if (!text.trim()) {
+      const errorMessage =
+        typeof payload.error === "string" ? payload.error : payload.error?.message;
+      throw new Error(errorMessage || "LLM API returned no text content.");
+    }
+  } else {
+    const endpoint = baseUrl?.trim();
+    if (!endpoint) {
+      throw new Error("Missing LLM endpoint URL.");
+    }
+    const response = await fetch(`${endpoint.replace(/\/$/, "")}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages,
+        options: { num_predict: 900, temperature: 0.9 },
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Ollama request failed (${response.status}): ${detail.slice(0, 500)}`);
+    }
+
+    const payload = (await response.json()) as {
+      message?: { content?: string };
+      response?: string;
+      error?: string;
+    };
+    text = payload.message?.content ?? payload.response ?? "";
+    if (!text.trim()) {
+      throw new Error(payload.error || "Ollama returned no text content.");
+    }
   }
 
-  const payload = (await response.json()) as {
-    message?: { content?: string };
-    response?: string;
-    error?: string;
-  };
-  const text = payload.message?.content ?? payload.response ?? "";
   if (!text.trim()) {
-    throw new Error(payload.error || "Ollama returned no text content.");
+    throw new Error("LLM returned no text content.");
   }
   return parseRoastJson(text);
 }
