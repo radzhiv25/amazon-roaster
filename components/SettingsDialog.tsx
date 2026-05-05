@@ -29,7 +29,7 @@ export interface UserSettings {
 
 const DEFAULT_SETTINGS: UserSettings = {
   ollamaModel: "gemma4:e2b",
-  ollamaBaseUrl: "http://127.0.0.1:11434",
+  ollamaBaseUrl: "",
   roastMode: "standard",
   roastLanguage: "english",
   narratorPersona: "brenda",
@@ -197,7 +197,7 @@ export function SettingsDialog() {
                 <Input
                   value={settings.ollamaBaseUrl}
                   onChange={(e) => setSettings({ ...settings, ollamaBaseUrl: e.target.value })}
-                  placeholder="http://127.0.0.1:11434"
+                  placeholder="https://your-llm-endpoint.example.com"
                 />
               </div>
             </div>

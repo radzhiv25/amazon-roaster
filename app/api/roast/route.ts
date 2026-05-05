@@ -10,9 +10,32 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const MODES: RoastMode[] = ["standard", "harder", "reRoast"];
+const FALLBACK_LIMIT_COOKIE = "fallback_roast_count";
+const FALLBACK_LIMIT_MAX = 2;
 
 function isRoastMode(value: unknown): value is RoastMode {
   return typeof value === "string" && (MODES as string[]).includes(value);
+}
+
+function isServerlessRuntime(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_EXECUTION_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
+function isLocalhostUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
+function getFallbackCountFromCookie(request: Request): number {
+  const cookie = request.headers.get("cookie") ?? "";
+  const parts = cookie.split(";").map((v) => v.trim());
+  const raw = parts.find((p) => p.startsWith(`${FALLBACK_LIMIT_COOKIE}=`));
+  const n = Number(raw?.split("=")[1] ?? "0");
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
 /** When set, skips external TTS (still returns roast text). */
@@ -59,15 +82,11 @@ function pickWithSource(
 
 /** Get effective settings - use dialog values for keys/voices only */
 function getEffectiveSettings(userSettings?: UserSettings) {
-  const modelPicked = pickWithSource(
-    userSettings?.ollamaModel,
-    process.env.OLLAMA_MODEL,
-    "gemma4:e2b"
-  );
+  const modelPicked = pickWithSource(userSettings?.ollamaModel, undefined, "gemma4:e2b");
   const baseUrlPicked = pickWithSource(
     userSettings?.ollamaBaseUrl,
-    process.env.OLLAMA_BASE_URL,
-    "http://127.0.0.1:11434"
+    undefined,
+    ""
   );
   const model = modelPicked.value;
   const baseUrl = baseUrlPicked.value;
@@ -152,8 +171,17 @@ export async function POST(request: Request) {
 
     // Get effective settings (user settings take precedence)
     const settings = getEffectiveSettings(userSettings);
+    const fallbackCount = getFallbackCountFromCookie(request);
+    let nextFallbackCount = fallbackCount;
     const voiceGender: VoiceGender = settings.narratorPersona === "brandon" ? "male" : "female";
     const personaName = settings.narratorPersona === "brandon" ? "Brandon" : "Brenda";
+
+    if (!settings.ollamaBaseUrl) {
+      throw new Error("Set your own LLM endpoint in Settings (Ollama Base URL).");
+    }
+    if (isServerlessRuntime() && isLocalhostUrl(settings.ollamaBaseUrl)) {
+      throw new Error("Localhost/127.0.0.1 endpoint is not reachable from production. Set a public LLM endpoint in Settings.");
+    }
 
     const product = await scrapeAmazonProduct(url);
     const mode = settings.roastMode || requestedMode;
@@ -216,6 +244,9 @@ export async function POST(request: Request) {
           console.error("[tts] elevenlabs fallback to noiz:", msg);
 
           try {
+            if (fallbackCount >= FALLBACK_LIMIT_MAX) {
+              throw new Error(`Fallback voice limit reached (${FALLBACK_LIMIT_MAX} uses).`);
+            }
             const audioBuffer = await synthesizeRoastSpeechNoiz(roast, settings.noizApiKey, noizVoiceId, {
               outputFormat: settings.noizOutputFormat,
               speed: settings.noizSpeed,
@@ -224,6 +255,7 @@ export async function POST(request: Request) {
             audioBase64 = audioBuffer.toString("base64");
             alignment = null;
             ttsProvider = "noiz";
+            nextFallbackCount = fallbackCount + 1;
             console.log("[roast:tts] provider=noiz(fallback)", {
               voiceGender,
               noizVoiceIdSource:
@@ -238,6 +270,9 @@ export async function POST(request: Request) {
           }
         }
       } else {
+        if (fallbackCount >= FALLBACK_LIMIT_MAX) {
+          throw new Error(`Fallback voice limit reached (${FALLBACK_LIMIT_MAX} uses).`);
+        }
         const audioBuffer = await synthesizeRoastSpeechNoiz(roast, settings.noizApiKey, noizVoiceId, {
           outputFormat: settings.noizOutputFormat,
           speed: settings.noizSpeed,
@@ -246,6 +281,7 @@ export async function POST(request: Request) {
         audioBase64 = audioBuffer.toString("base64");
         alignment = null;
         ttsProvider = "noiz";
+        nextFallbackCount = fallbackCount + 1;
         console.log("[roast:tts] provider=noiz", {
           voiceGender,
           noizVoiceIdSource:
@@ -277,7 +313,14 @@ export async function POST(request: Request) {
       ttsSkipped: skip,
     };
 
-    return NextResponse.json(payload);
+    const response = NextResponse.json(payload);
+    if (nextFallbackCount !== fallbackCount) {
+      response.headers.append(
+        "Set-Cookie",
+        `${FALLBACK_LIMIT_COOKIE}=${nextFallbackCount}; Path=/; Max-Age=2592000; SameSite=Lax`
+      );
+    }
+    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error.";
     const status = message.includes("Invalid") || message.includes("Only Amazon") ? 400 : 500;
