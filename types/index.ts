@@ -7,8 +7,6 @@ export type RoastAlignment = {
   characterEndTimesSeconds: number[];
 };
 
-export type BadgeType = "red" | "amber" | "green";
-
 export interface ProductData {
   title: string;
   brand: string;
@@ -20,22 +18,15 @@ export interface ProductData {
   imageUrl: string;
 }
 
-export interface Badge {
-  label: string;
-  type: BadgeType;
-}
-
 export interface RoastResponse {
   roast: string;
   verdict: string;
-  badges: Badge[];
 }
 
 export interface ApiResponse {
   product: ProductData;
   roast: string;
   verdict: string;
-  badges: Badge[];
   /** Base64-encoded MP3, or empty string when TTS is skipped. */
   audio: string;
   /** Character-level timings when synthesized with ElevenLabs `convertWithTimestamps`. */

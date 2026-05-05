@@ -1,20 +1,23 @@
 import "server-only";
 import type { ProductData, RoastMode, RoastResponse } from "@/types";
 
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "minimax-m2.5:cloud";
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
-
 /** Hard cap on `roast` length (prompt + clamp). Keep in sync with prompt text. */
 export const ROAST_MAX_CHARS = 800;
+type RoastLanguage = "english" | "hindi" | "hinglish";
 
-const BRENDA_SYSTEM = `You are Brenda, a sarcastic Amazon product critic who roasts listings like a disappointed influencer on live video. You are sharp, theatrical, and funny—never cruel about protected classes, never instructive about self-harm or illegal acts, and you keep it about the product and the absurdity of the listing.
+function buildSystemPrompt(personaName: string): string {
+  return `You are ${personaName}, a sarcastic Amazon product critic who roasts listings like a disappointed influencer on live video. You are sharp, theatrical, and funny-never cruel about protected classes, never instructive about self-harm or illegal acts, and you keep it about the product and the absurdity of the listing.
 
-You MUST respond with a single JSON object and nothing else—no markdown fences, no preamble. The JSON must match this shape exactly:
-{"roast":"string — tight spoken monologue, MUST be ${ROAST_MAX_CHARS} characters or fewer (count every character including spaces). Pack your best lines; no filler; end on a strong beat within the budget.","verdict":"string — one punchy closing line (keep brief)","badges":[{"label":"string","type":"red"|"amber"|"green"}]}
+You MUST respond with a single JSON object and nothing else-no markdown fences, no preamble. The JSON must match this shape exactly:
+{"roast":"string - tight spoken monologue, MUST be ${ROAST_MAX_CHARS} characters or fewer (count every character including spaces). Pack your best lines; no filler; end on a strong beat within the budget.","verdict":"string - one punchy closing line (keep brief)"}`;
+}
 
-Use 3–6 badges. "red" is a savage ding, "amber" is a side-eye / mixed bag, "green" is a reluctant compliment or "only redeeming thing" joke.`;
-
-function buildUserPrompt(product: ProductData, mode: RoastMode): string {
+function buildUserPrompt(
+  product: ProductData,
+  mode: RoastMode,
+  personaName: string,
+  roastLanguage: RoastLanguage
+): string {
   const block = [
     "SCRAPED_PRODUCT:",
     `title: ${product.title || "(missing)"}`,
@@ -31,12 +34,19 @@ function buildUserPrompt(product: ProductData, mode: RoastMode): string {
 
   const modeLine =
     mode === "harder"
-      ? "MODE: harder — turn the heat up; still playful, no slurs, no harassment of real people."
+      ? "MODE: harder - turn the heat up; still playful, no slurs, no harassment of real people."
       : mode === "reRoast"
-        ? "MODE: re-roast — completely fresh angles and jokes; do not repeat phrasing or beats from a hypothetical prior roast."
-        : "MODE: standard — classic Brenda energy.";
+        ? "MODE: re-roast - completely fresh angles and jokes; do not repeat phrasing or beats from a hypothetical prior roast."
+        : `MODE: standard - classic ${personaName} energy.`;
 
-  return `${modeLine}\n\nCONSTRAINT: The JSON "roast" string must be at most ${ROAST_MAX_CHARS} characters after trimming (shorter is fine; prioritize punch over padding).\n\n${block}`;
+  const languageLine =
+    roastLanguage === "hindi"
+      ? "LANGUAGE: Hindi (Devanagari). Keep all output fields in Hindi naturally."
+      : roastLanguage === "hinglish"
+        ? "LANGUAGE: Hinglish (natural Hindi + English mix, commonly spoken style)."
+        : "LANGUAGE: English.";
+
+  return `${modeLine}\n${languageLine}\n\nCONSTRAINT: The JSON "roast" string must be at most ${ROAST_MAX_CHARS} characters after trimming (shorter is fine; prioritize punch over padding).\n\n${block}`;
 }
 
 /** If the model overshoots, trim to `max` with a clean break when possible. */
@@ -100,10 +110,9 @@ function parseRoastJson(text: string): RoastResponse {
   let parsed: unknown;
   try {
     parsed = JSON.parse(slice);
-  } catch (e) {
-    // Log the problematic text for debugging
+  } catch {
     console.error("[parseRoastJson] Failed to parse JSON:", slice.slice(0, 500));
-    throw new Error(`LLM returned invalid JSON for the roast.`);
+    throw new Error("LLM returned invalid JSON for the roast.");
   }
   if (!parsed || typeof parsed !== "object") {
     throw new Error("LLM roast payload was not an object.");
@@ -112,34 +121,34 @@ function parseRoastJson(text: string): RoastResponse {
   const roastRaw = typeof obj.roast === "string" ? obj.roast : "";
   const roastTrimmed = roastRaw.trim();
   const verdict = typeof obj.verdict === "string" ? obj.verdict : "";
-  const badgesRaw = obj.badges;
-  const badges: RoastResponse["badges"] = [];
-  if (Array.isArray(badgesRaw)) {
-    for (const b of badgesRaw) {
-      if (!b || typeof b !== "object") continue;
-      const br = b as Record<string, unknown>;
-      const label = typeof br.label === "string" ? br.label : "";
-      const type = br.type === "red" || br.type === "amber" || br.type === "green" ? br.type : "amber";
-      if (label) badges.push({ label, type });
-    }
-  }
   if (!roastTrimmed) {
     throw new Error("LLM returned an empty roast.");
   }
   const roast = clampRoastLength(roastTrimmed, ROAST_MAX_CHARS);
-  return { roast, verdict, badges };
+  return { roast, verdict };
 }
 
-export async function generateRoast(product: ProductData, mode: RoastMode): Promise<RoastResponse> {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+export async function generateRoast(
+  product: ProductData,
+  mode: RoastMode,
+  config: {
+    model: string;
+    baseUrl: string;
+    personaName?: string;
+    roastLanguage?: RoastLanguage;
+  }
+): Promise<RoastResponse> {
+  const { model, baseUrl, personaName = "Brenda", roastLanguage = "english" } = config;
+
+  const response = await fetch(`${baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model,
       stream: false,
       messages: [
-        { role: "system", content: BRENDA_SYSTEM },
-        { role: "user", content: buildUserPrompt(product, mode) },
+        { role: "system", content: buildSystemPrompt(personaName) },
+        { role: "user", content: buildUserPrompt(product, mode, personaName, roastLanguage) },
       ],
       options: { num_predict: 900, temperature: 0.9 },
     }),
@@ -159,7 +168,5 @@ export async function generateRoast(product: ProductData, mode: RoastMode): Prom
   if (!text.trim()) {
     throw new Error(payload.error || "Ollama returned no text content.");
   }
-  // Log raw response for debugging
-  console.log("[generateRoast] Raw LLM response:", text.slice(0, 500));
   return parseRoastJson(text);
 }

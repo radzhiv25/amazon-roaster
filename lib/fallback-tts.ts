@@ -22,33 +22,42 @@ function pickString(obj: unknown, paths: string[][]): string | null {
   return null;
 }
 
-export async function synthesizeRoastSpeech(text: string): Promise<Buffer> {
-  const apiKey = process.env.NOIZ_API_KEY;
-  const voiceId = process.env.NOIZ_VOICE_ID;
-  if (!apiKey) {
-    throw new Error("Missing NOIZ_API_KEY.");
+export async function synthesizeRoastSpeech(
+  text: string,
+  apiKey?: string,
+  voiceId?: string,
+  opts?: {
+    outputFormat?: string;
+    speed?: string;
+    qualityPreset?: string;
   }
-  if (!voiceId?.trim()) {
+): Promise<Buffer> {
+  const effectiveApiKey = apiKey?.trim();
+  const effectiveVoiceId = voiceId?.trim();
+
+  if (!effectiveApiKey) {
+    throw new Error("Missing Noiz API key in settings.");
+  }
+  if (!effectiveVoiceId) {
     throw new Error(
-      "Missing NOIZ_VOICE_ID. Your Noiz workspace requires a voice_id (or uploaded file) for TTS.",
+      "Missing Noiz voice ID in settings. Your Noiz workspace requires a voice_id (or uploaded file) for TTS."
     );
   }
 
   const trimmed = text.trim();
-  const bodyText =
-    trimmed.length <= MAX_TEXT_CHARS ? trimmed : trimmed.slice(0, MAX_TEXT_CHARS);
+  const bodyText = trimmed.length <= MAX_TEXT_CHARS ? trimmed : trimmed.slice(0, MAX_TEXT_CHARS);
 
   const form = new FormData();
   form.append("text", bodyText);
-  form.append("voice_id", voiceId.trim());
-  form.append("output_format", "mp3");
-  form.append("speed", "1");
-  form.append("quality_preset", "3");
+  form.append("voice_id", effectiveVoiceId);
+  form.append("output_format", opts?.outputFormat?.trim() || "mp3");
+  form.append("speed", opts?.speed?.trim() || "1");
+  form.append("quality_preset", opts?.qualityPreset?.trim() || "3");
 
   const response = await fetch(NOIZ_TTS_URL, {
     method: "POST",
     headers: {
-      Authorization: apiKey,
+      Authorization: effectiveApiKey,
     },
     body: form,
   });
