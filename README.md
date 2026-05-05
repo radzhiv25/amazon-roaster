@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Amazon Roaster
 
-## Getting Started
+Paste an Amazon product URL, get a short roast (roast + verdict), and optionally generate audio with TTS.
 
-First, run the development server:
+## Setup
+
+1. Install deps and start the app:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Configure Ollama + TTS:
+   - You can set Ollama/TTS values in the in-app **API Settings** dialog (gear icon).
+   - Alternatively, you can provide server-side defaults via environment variables (used when a setting isn’t provided in the dialog).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Then open `http://localhost:3000`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Roast configuration (in Settings)
 
-## Learn More
+Open **API Settings** (gear icon, top-right).
 
-To learn more about Next.js, take a look at the following resources:
+- **Roast mode**: `Standard`, `Harder`, `Re-roast`
+- **Roast language**: `English`, `Hindi`, `Hinglish`
+- **Roast Persona (LLM)**:
+  - **Female persona name** (used when you select “Woman voice”)
+  - **Male persona name** (used when you select “Man voice”)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Voice persona selection is on the main page under **Voice persona** (“Woman voice” / “Man voice”).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## TTS: ElevenLabs primary, Noiz fallback
 
-## Deploy on Vercel
+In **API Settings**:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Primary TTS Provider (Optional)**: ElevenLabs
+  - **API Key**
+  - **Voice ID (Female)** / **Voice ID (Male)**
+- **Fallback TTS Provider (Optional)**: Noiz
+  - **API Key**
+  - **Voice ID (Female)** / **Voice ID (Male)**
+  - **Legacy Voice ID (Optional)**: used when gender-specific Noiz voice IDs are not set
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Runtime behavior:
+- If an ElevenLabs API key is provided, the app attempts ElevenLabs first.
+- If ElevenLabs fails, it falls back to Noiz.
+
+To disable external TTS calls entirely, set:
+- `SKIP_TTS=true`
+
+## Optional environment overrides (no UI)
+
+These override TTS output configuration when set.
+
+ElevenLabs:
+- `ELEVENLABS_TTS_MODEL` (default: `eleven_turbo_v2_5`)
+
+Noiz output:
+- `NOIZ_TTS_OUTPUT_FORMAT` (default: `mp3`)
+- `NOIZ_TTS_SPEED` (default: `1`)
+- `NOIZ_TTS_QUALITY_PRESET` (default: `3`)
+
+## Optional environment overrides (Ollama defaults)
+
+- `OLLAMA_MODEL` (default: `gemma4:e2b`)
+- `OLLAMA_BASE_URL` (default: `http://127.0.0.1:11434`)
