@@ -11,9 +11,14 @@ function downsample(freq: Uint8Array, bandCount: number): number[] {
   const out = new Array<number>(bandCount).fill(0);
   if (!freq.length || bandCount <= 0) return out;
 
+  // Perceptual (log-ish) band mapping so activity spreads across the matrix
+  // instead of clustering only in low-frequency columns.
+  const maxIndex = freq.length - 1;
   for (let b = 0; b < bandCount; b++) {
-    const from = Math.floor((b * freq.length) / bandCount);
-    let to = Math.floor(((b + 1) * freq.length) / bandCount);
+    const startNorm = b / bandCount;
+    const endNorm = (b + 1) / bandCount;
+    const from = Math.floor(Math.pow(startNorm, 1.85) * maxIndex);
+    let to = Math.floor(Math.pow(endNorm, 1.85) * maxIndex);
     if (to <= from) to = from + 1;
     let sum = 0;
     let count = 0;
@@ -21,22 +26,24 @@ function downsample(freq: Uint8Array, bandCount: number): number[] {
       sum += freq[i];
       count++;
     }
-    out[b] = count ? sum / count / 255 : 0;
+    const avg = count ? sum / count / 255 : 0;
+    const emphasis = 0.74 + (b / Math.max(1, bandCount - 1)) * 0.52;
+    out[b] = Math.min(1, avg * emphasis);
   }
   return out;
 }
 
 /** Frequency bands for `Matrix` VU meter; attaches one Web Audio graph while mounted. */
 
+const audioContextByElement = new WeakMap<HTMLAudioElement, AudioContext>();
+const sourceByElement = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>();
+const destinationConnected = new WeakSet<HTMLAudioElement>();
+
 export function useAudioAnalyserBands(
   audioRef: MutableRefObject<HTMLAudioElement | null>,
   bandCount: number
 ): number[] {
   const [levels, setLevels] = useState<number[]>(() => Array.from({ length: bandCount }, () => 0));
-
-  useEffect(() => {
-    setLevels(Array.from({ length: bandCount }, () => 0));
-  }, [bandCount]);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -46,27 +53,35 @@ export function useAudioAnalyserBands(
         : undefined;
     if (!el || !ctor) return undefined;
 
-    const ctx = new ctor();
+    let ctx = audioContextByElement.get(el);
+    if (!ctx) {
+      ctx = new ctor();
+      audioContextByElement.set(el, ctx);
+    }
+
+    let source = sourceByElement.get(el);
+    if (!source) {
+      try {
+        source = ctx.createMediaElementSource(el);
+        sourceByElement.set(el, source);
+      } catch {
+        return undefined;
+      }
+    }
+
+    if (!destinationConnected.has(el)) {
+      source.connect(ctx.destination);
+      destinationConnected.add(el);
+    }
+
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
-
-    let source: MediaElementAudioSourceNode;
-    try {
-      source = ctx.createMediaElementSource(el);
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
-      console.log("[useAudioAnalyserBands] Web Audio API connected, ctx.state:", ctx.state);
-    } catch (e) {
-      console.error("[useAudioAnalyserBands] Web Audio API error:", e);
-      void ctx.close().catch(() => {});
-      return undefined;
-    }
+    source.connect(analyser);
 
     const buffer = new Uint8Array(analyser.frequencyBinCount);
     let rafId = 0;
 
     const onPlay = () => {
-      console.log("[useAudioAnalyserBands] play event, resuming ctx, state:", ctx.state);
       void ctx.resume();
     };
 
@@ -83,9 +98,8 @@ export function useAudioAnalyserBands(
     return () => {
       cancelAnimationFrame(rafId);
       el.removeEventListener("play", onPlay);
-      source.disconnect();
       analyser.disconnect();
-      void ctx.close().catch(() => {});
+      source.disconnect(analyser);
     };
   }, [audioRef, bandCount]);
 

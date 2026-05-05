@@ -8,19 +8,19 @@ function Field({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
-      <dd className="mt-0.5 text-sm text-zinc-900 dark:text-zinc-100">{value}</dd>
+      <dd className="mt-0.5 text-sm text-foreground">{value}</dd>
     </div>
   );
 }
 
 export function ProductCard({ product }: ProductCardProps) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+    <section className="overflow-hidden rounded-none border border-border/70 bg-card/90 shadow-xs">
       <div className="grid gap-4 p-5 sm:grid-cols-[160px_1fr] sm:p-6">
-        <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-zinc-100 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="relative aspect-square w-full overflow-hidden rounded-none border border-border/50 bg-muted/30">
           {product.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- Amazon CDNs vary by locale
             <img
@@ -29,11 +29,11 @@ export function ProductCard({ product }: ProductCardProps) {
               className="h-full w-full object-contain"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-xs text-zinc-400">No image</div>
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No image</div>
           )}
         </div>
         <div className="flex flex-col gap-3.5">
-          <h2 className="text-xl font-semibold leading-snug text-zinc-900 dark:text-zinc-50">
+          <h2 className="text-xl font-semibold leading-snug text-foreground">
             {product.title || "Unknown product"}
           </h2>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -44,10 +44,10 @@ export function ProductCard({ product }: ProductCardProps) {
           </dl>
           {product.bullets.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Highlights
               </h3>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-zinc-800 dark:text-zinc-200">
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground/90">
                 {product.bullets.map((b) => (
                   <li key={b}>{b}</li>
                 ))}
@@ -56,12 +56,12 @@ export function ProductCard({ product }: ProductCardProps) {
           )}
           {product.reviews.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Review snippets
               </h3>
-              <ul className="mt-2 space-y-2 text-sm italic text-zinc-700 dark:text-zinc-300">
+              <ul className="mt-2 space-y-2 text-sm italic text-foreground/80">
                 {product.reviews.map((r) => (
-                  <li key={r} className="border-l-2 border-amber-200 pl-3 dark:border-amber-800">
+                  <li key={r} className="border-l-2 border-primary/30 pl-3">
                     “{r}”
                   </li>
                 ))}

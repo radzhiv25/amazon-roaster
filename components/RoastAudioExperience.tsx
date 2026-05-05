@@ -1,7 +1,7 @@
 "use client";
 
 import type { MutableRefObject } from "react";
-import { memo, useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 import {
   AudioPlayerDuration,
@@ -64,14 +64,18 @@ const RoastPlaybackInner = memo(function RoastPlaybackInner({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-        <div className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-900/95 p-4 dark:border-zinc-700">
-          <RoastVuMatrix audioRef={player.ref as MutableRefObject<HTMLAudioElement | null>} cols={26} rows={11} />
+      <div className="flex flex-col gap-3 sm:items-stretch">
+        <div className="w-max flex shrink-0 items-center justify-center overflow-hidden rounded-none border border-border/70 bg-card p-2">
+          <RoastVuMatrix
+            audioRef={player.ref as MutableRefObject<HTMLAudioElement | null>}
+            cols={25}
+            rows={25}
+          />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <AudioPlayerButton item={roastItem} variant="default" size="icon" className="size-11 shrink-0" />
+          <div className="flex flex-wrap items-end gap-3">
+            <AudioPlayerButton item={roastItem} variant="default" size="icon" className="size-10 shrink-0" />
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <AudioPlayerProgress className="w-full data-[orientation=horizontal]:grow" />
               <div className="text-muted-foreground flex items-center gap-2 font-mono text-xs tabular-nums">
@@ -84,7 +88,7 @@ const RoastPlaybackInner = memo(function RoastPlaybackInner({
                 </span>
               </div>
             </div>
-            <AudioPlayerSpeed variant="outline" size="icon" />
+            <AudioPlayerSpeed variant="outline" size="icon" className="size-10 shrink-0" />
           </div>
 
           <p className="text-muted-foreground text-xs tracking-wide uppercase">Live transcript</p>
@@ -113,9 +117,50 @@ const RoastVuMatrix = memo(function RoastVuMatrix({
   rows: number;
   cols: number;
 }) {
-  // Temporarily disable analyser to test if it's causing the issue
-  // const bands = useAudioAnalyserBands(audioRef, cols);
-  const bands = Array.from({ length: cols }, () => Math.random() * 0.5 + 0.2);
+  const rawBands = useAudioAnalyserBands(audioRef, cols);
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    let raf = 0;
+    let last = 0;
+    const step = (time: number) => {
+      if (last === 0) last = time;
+      const delta = time - last;
+      last = time;
+      setPhase((prev) => prev + delta * 0.006);
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const bands = useMemo(() => {
+    const hasSignal = rawBands.some((value) => value > 0.03);
+    if (hasSignal) {
+      const energy = rawBands.reduce((acc, v) => acc + v, 0) / Math.max(1, rawBands.length);
+      const emphasized = rawBands.map((value, idx) => {
+        const tilt = 1 - idx / Math.max(1, cols - 1);
+        const ambience = Math.sin(phase * 0.9 + idx * 0.35) * 0.03;
+        const boosted = value * 0.88 + energy * (0.42 + tilt * 0.18) + ambience;
+        return Math.max(0.02, Math.min(1, boosted));
+      });
+      return emphasized.map((value, idx) => {
+        const left = emphasized[Math.max(0, idx - 1)] ?? value;
+        const right = emphasized[Math.min(emphasized.length - 1, idx + 1)] ?? value;
+        const smoothed = value * 0.62 + left * 0.19 + right * 0.19;
+        const crossBleed = energy * (0.2 + 0.1 * Math.sin(phase * 0.5 + idx * 0.2));
+        return Math.max(0.02, Math.min(1, smoothed + crossBleed));
+      });
+    }
+
+    // Keep a subtle animated baseline so the matrix feels interactive before playback.
+    return rawBands.map((_, idx) => {
+      const waveA = Math.sin(phase + idx * 0.42) * 0.06;
+      const waveB = Math.sin(phase * 0.6 - idx * 0.23) * 0.04;
+      return Math.max(0.02, Math.min(0.2, 0.08 + waveA + waveB));
+    });
+  }, [rawBands, phase, cols]);
+
   return (
     <Matrix
       mode="vu"
@@ -128,8 +173,8 @@ const RoastVuMatrix = memo(function RoastVuMatrix({
       autoplay={false}
       ariaLabel="Playback level meter"
       palette={{
-        on: "text-amber-400",
-        off: "text-zinc-800 dark:text-zinc-900",
+        on: "var(--primary)",
+        off: "var(--muted-foreground)",
       }}
     />
   );
@@ -147,25 +192,34 @@ function SyncedRoastWords({
   const currentTime = useAudioPlayerTime();
   const duration = useAudioPlayer().duration;
   const dur = duration !== undefined && Number.isFinite(duration) ? duration : 0;
+  const transcriptTime = Math.round(currentTime * 12) / 12;
 
-  const segmentsWithStatus = useMemo(() => {
+  const segments = useMemo(() => {
     const aligned =
       alignmentProp ??
-      (dur > 0 ? approximateAlignmentFromPlainText(roastFallback, dur) : approximateAlignmentFromPlainText(roastFallback, 1));
-    const segments = defaultComposeAlignment(aligned);
+      (dur > 0
+        ? approximateAlignmentFromPlainText(roastFallback, dur)
+        : approximateAlignmentFromPlainText(roastFallback, 1));
+    return defaultComposeAlignment(aligned);
+  }, [alignmentProp, roastFallback, dur]);
 
+  const segmentsWithStatus = useMemo(() => {
     if (segments.length === 0) {
       return [] as Array<{ segment: (typeof segments)[number]; status: "spoken" | "unspoken" | "current" }>;
     }
 
-    if (dur > 0 && currentTime >= dur - 0.01) {
+    if (dur > 0 && transcriptTime >= dur - 0.01) {
       return segments.map((segment) => ({
         segment,
         status: "spoken" as const,
       }));
     }
 
-    const { spokenSegments, currentWord, unspokenSegments } = sliceTranscriptByPlayback(segments, currentTime, dur);
+    const { spokenSegments, currentWord, unspokenSegments } = sliceTranscriptByPlayback(
+      segments,
+      transcriptTime,
+      dur
+    );
 
     type Status = "spoken" | "unspoken" | "current";
     const entries: Array<{ segment: (typeof segments)[number]; status: Status }> = [];
@@ -177,19 +231,19 @@ function SyncedRoastWords({
     if (currentWord) entries.push({ segment: currentWord, status: "current" });
     append(unspokenSegments, "unspoken");
     return entries;
-  }, [alignmentProp, roastFallback, currentTime, dur]);
+  }, [segments, transcriptTime, dur]);
 
   return (
-    <div className="text-xl leading-relaxed tracking-tight text-zinc-800 dark:text-zinc-200">
+    <div className="text-md leading-relaxed tracking-tight text-foreground">
       {segmentsWithStatus.map(({ segment, status }) => {
         const wordStyle =
           status === "spoken"
-            ? "text-zinc-800 dark:text-zinc-100"
+            ? "text-foreground"
             : status === "current"
-              ? "bg-amber-500 text-white shadow-sm dark:bg-amber-500 dark:text-zinc-950"
-              : "text-zinc-400 dark:text-zinc-500";
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-foreground/70";
 
-        const gapStyle = status === "spoken" ? wordStyle : "text-muted-foreground";
+        const gapStyle = status === "spoken" ? "text-foreground/90" : "text-foreground/60";
 
         if (segment.kind === "gap") {
           return (
@@ -200,7 +254,7 @@ function SyncedRoastWords({
         }
 
         return (
-          <span key={`word-${segment.segmentIndex}`} className={cn("rounded-sm px-0.5 transition-colors", wordStyle)}>
+          <span key={`word-${segment.segmentIndex}`} className={cn("rounded-none px-0.5 transition-colors", wordStyle)}>
             {segment.text}
           </span>
         );

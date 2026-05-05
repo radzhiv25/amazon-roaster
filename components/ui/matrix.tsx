@@ -290,8 +290,7 @@ export const pulse: Frame[] = (() => {
   return frames
 })()
 
-export function vu(columns: number, levels: number[]): Frame {
-  const rows = 7
+export function vu(rows: number, columns: number, levels: number[]): Frame {
   const frame = emptyFrame(rows, columns)
 
   for (let col = 0; col < Math.min(columns, levels.length); col++) {
@@ -451,7 +450,7 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
 
     const currentFrame = useMemo(() => {
       if (mode === "vu" && levels && levels.length > 0) {
-        return ensureFrameSize(vu(cols, levels), rows, cols)
+        return ensureFrameSize(vu(rows, cols, levels), rows, cols)
       }
 
       if (pattern) {
@@ -516,32 +515,15 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
           style={{ overflow: "visible" }}
         >
           <defs>
-            <radialGradient id="matrix-pixel-on" cx="50%" cy="50%" r="50%">
+            <linearGradient id="matrix-pixel-on" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="var(--matrix-on)" stopOpacity="1" />
-              <stop
-                offset="70%"
-                stopColor="var(--matrix-on)"
-                stopOpacity="0.85"
-              />
-              <stop
-                offset="100%"
-                stopColor="var(--matrix-on)"
-                stopOpacity="0.6"
-              />
-            </radialGradient>
+              <stop offset="100%" stopColor="var(--matrix-on)" stopOpacity="0.72" />
+            </linearGradient>
 
-            <radialGradient id="matrix-pixel-off" cx="50%" cy="50%" r="50%">
-              <stop
-                offset="0%"
-                stopColor="var(--muted-foreground)"
-                stopOpacity="1"
-              />
-              <stop
-                offset="100%"
-                stopColor="var(--muted-foreground)"
-                stopOpacity="0.7"
-              />
-            </radialGradient>
+            <linearGradient id="matrix-pixel-off" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="var(--matrix-off)" stopOpacity="0.72" />
+              <stop offset="100%" stopColor="var(--matrix-off)" stopOpacity="0.55" />
+            </linearGradient>
 
             <filter
               id="matrix-glow"
@@ -580,20 +562,21 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
                 ? "url(#matrix-pixel-on)"
                 : "url(#matrix-pixel-off)"
 
-              const scale = isActive ? 1.1 : 1
-              const radius = (size / 2) * 0.9
+              const scale = isActive ? 1.06 : 1
+              const cellSize = size * 0.82
 
               return (
-                <circle
+                <rect
                   key={`${rowIndex}-${colIndex}`}
                   className={cn(
                     "matrix-pixel",
                     isActive && "matrix-pixel-active",
                     !isOn && "opacity-20 dark:opacity-[0.1]"
                   )}
-                  cx={pos.x + size / 2}
-                  cy={pos.y + size / 2}
-                  r={radius}
+                  x={pos.x + (size - cellSize) / 2}
+                  y={pos.y + (size - cellSize) / 2}
+                  width={cellSize}
+                  height={cellSize}
                   fill={fill}
                   opacity={isOn ? opacity : 0.1}
                   style={{

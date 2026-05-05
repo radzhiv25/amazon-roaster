@@ -1,19 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { Toaster } from "sonner";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Amazon Roaster",
@@ -26,8 +18,29 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+    <html lang="en" className={cn("h-full", "antialiased", inter.variable, jetbrainsMono.variable)}>
+      <body className="min-h-full flex flex-col font-sans">
+        {children}
+        <Toaster
+          richColors
+          position="top-right"
+          toastOptions={{
+            classNames: {
+              toast:
+                "!rounded-none !border !border-border !bg-card !text-card-foreground !shadow-xs",
+              title: "!text-sm !font-semibold !text-foreground",
+              description: "!text-xs !text-muted-foreground",
+              actionButton:
+                "!rounded-none !bg-primary !text-primary-foreground hover:!bg-primary/90",
+              cancelButton: "!rounded-none !bg-muted !text-foreground hover:!bg-muted/80",
+              success: "!border-primary/30",
+              error: "!border-destructive/35 !text-destructive",
+              warning: "!border-primary/35",
+              info: "!border-border",
+            },
+          }}
+        />
+      </body>
     </html>
   );
 }

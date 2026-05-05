@@ -120,7 +120,6 @@ export function AudioPlayerProvider<TData = unknown>({
 
   const setActiveItem = useCallback(
     async (item: AudioPlayerItem<TData> | null) => {
-      console.log("[setActiveItem] Called with item:", item?.id, "current:", itemRef.current?.id)
       if (!audioRef.current) return
 
       // Check if we need to actually load the audio
@@ -128,14 +127,12 @@ export function AudioPlayerProvider<TData = unknown>({
       const needsLoad = item?.id !== itemRef.current?.id || !audioRef.current.src
       
       if (!needsLoad) {
-        console.log("[setActiveItem] Same item and src is set, skipping")
         return
       }
       
       itemRef.current = item
       // Also update the state so play() can check if item is active
       _setActiveItem(item)
-      console.log("[setActiveItem] State updated, loading audio")
       const currentRate = audioRef.current.playbackRate
       audioRef.current.pause()
       audioRef.current.currentTime = 0
@@ -146,14 +143,12 @@ export function AudioPlayerProvider<TData = unknown>({
       }
       audioRef.current.load()
       audioRef.current.playbackRate = currentRate
-      console.log("[setActiveItem] Done, src now:", item?.src)
     },
     []
   )
 
   const play = useCallback(
     async (item?: AudioPlayerItem<TData> | null) => {
-      console.log("[play] Called with item:", item?.id, "activeItem:", activeItem?.id)
       if (!audioRef.current) return
 
       if (playPromiseRef.current) {
@@ -165,20 +160,11 @@ export function AudioPlayerProvider<TData = unknown>({
       }
 
       if (item === undefined) {
-        console.log("[play] No item, playing current")
         const playPromise = audioRef.current.play()
         playPromiseRef.current = playPromise
         return playPromise
       }
       if (item?.id === activeItem?.id) {
-        console.log("[play] Same item as active, playing")
-        console.log("[play] audioRef.current:", audioRef.current)
-        console.log("[play] audioRef.current.src:", audioRef.current?.src)
-        console.log("[play] audioRef.current.readyState:", audioRef.current?.readyState)
-        console.log("[play] audioRef.current.volume:", audioRef.current?.volume)
-        console.log("[play] audioRef.current.muted:", audioRef.current?.muted)
-        console.log("[play] audioRef.current.paused:", audioRef.current?.paused)
-        
         // Ensure volume is up
         if (audioRef.current) {
           audioRef.current.volume = 1
@@ -187,15 +173,10 @@ export function AudioPlayerProvider<TData = unknown>({
         
         const playPromise = audioRef.current.play()
         playPromiseRef.current = playPromise
-        playPromise.then(() => {
-          console.log("[play] Play started successfully")
-          console.log("[play] After play - volume:", audioRef.current?.volume, "muted:", audioRef.current?.muted)
-        })
-          .catch((e) => console.error("[play] Play failed:", e))
+        playPromise.catch((e) => console.error("[play] Play failed:", e))
         return playPromise
       }
 
-      console.log("[play] Different item, loading new audio")
       itemRef.current = item
       _setActiveItem(item)
       const currentRate = audioRef.current.playbackRate
@@ -211,7 +192,6 @@ export function AudioPlayerProvider<TData = unknown>({
       audioRef.current.load()
       audioRef.current.playbackRate = currentRate
 
-      console.log("[play] Calling audio.play()")
       const playPromise = audioRef.current.play()
       playPromiseRef.current = playPromise
       return playPromise
