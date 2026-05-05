@@ -48,6 +48,8 @@ function skipTts(): boolean {
 interface UserSettings {
   ollamaModel?: string;
   ollamaBaseUrl?: string;
+  llmApiKey?: string;
+  llmApiBaseUrl?: string;
   roastMode?: RoastMode;
   roastLanguage?: "english" | "hindi" | "hinglish";
   narratorPersona?: "brenda" | "brandon";
@@ -90,6 +92,12 @@ function getEffectiveSettings(userSettings?: UserSettings) {
   );
   const model = modelPicked.value;
   const baseUrl = baseUrlPicked.value;
+  const llmApiKeyPicked = pickWithSource(userSettings?.llmApiKey, process.env.LLM_API_KEY, "");
+  const llmApiBaseUrlPicked = pickWithSource(
+    userSettings?.llmApiBaseUrl,
+    process.env.LLM_API_BASE_URL,
+    "https://openrouter.ai/api/v1"
+  );
 
   const elevenLabsKeyPicked = pickWithSource(
     userSettings?.elevenLabsApiKey,
@@ -144,6 +152,8 @@ function getEffectiveSettings(userSettings?: UserSettings) {
     roastLanguage: userSettings?.roastLanguage || "english",
     roastMode: userSettings?.roastMode || "standard",
     narratorPersona: userSettings?.narratorPersona === "brandon" ? "brandon" : "brenda",
+    llmApiKey: llmApiKeyPicked.value,
+    llmApiBaseUrl: llmApiBaseUrlPicked.value,
     elevenLabsApiKey: elevenLabsKeyPicked.value,
     elevenLabsVoiceIdFemale: elevenFemaleVoicePicked.value,
     elevenLabsVoiceIdMale: elevenMaleVoicePicked.value,
@@ -176,10 +186,10 @@ export async function POST(request: Request) {
     const voiceGender: VoiceGender = settings.narratorPersona === "brandon" ? "male" : "female";
     const personaName = settings.narratorPersona === "brandon" ? "Brandon" : "Brenda";
 
-    if (!settings.ollamaBaseUrl) {
-      throw new Error("Set your own LLM endpoint in Settings (Ollama Base URL).");
+    if (!settings.ollamaBaseUrl && !settings.llmApiKey) {
+      throw new Error("Set either an LLM endpoint URL or an LLM API key in Settings.");
     }
-    if (isServerlessRuntime() && isLocalhostUrl(settings.ollamaBaseUrl)) {
+    if (!settings.llmApiKey && isServerlessRuntime() && isLocalhostUrl(settings.ollamaBaseUrl)) {
       throw new Error("Localhost/127.0.0.1 endpoint is not reachable from production. Set a public LLM endpoint in Settings.");
     }
 
@@ -191,6 +201,8 @@ export async function POST(request: Request) {
       {
         model: settings.ollamaModel,
         baseUrl: settings.ollamaBaseUrl,
+        apiKey: settings.llmApiKey,
+        apiBaseUrl: settings.llmApiBaseUrl,
         personaName,
         roastLanguage: settings.roastLanguage,
       }
@@ -296,8 +308,8 @@ export async function POST(request: Request) {
     console.log("[roast:llm]", {
       ollamaModel: settings.ollamaModel,
       ollamaModelSource: settings.__source.ollamaModel,
-      ollamaBaseUrl: settings.ollamaBaseUrl,
-      ollamaBaseUrlSource: settings.__source.ollamaBaseUrl,
+      llmEndpointConfigured: Boolean(settings.ollamaBaseUrl),
+      llmApiKeyConfigured: Boolean(settings.llmApiKey),
       roastLanguage: settings.roastLanguage,
       persona: personaName,
       voiceGender,

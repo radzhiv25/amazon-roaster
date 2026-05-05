@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 export interface UserSettings {
   ollamaModel: string;
   ollamaBaseUrl: string;
+  llmApiKey: string;
+  llmApiBaseUrl: string;
   roastMode: "standard" | "harder" | "reRoast";
   roastLanguage: "english" | "hindi" | "hinglish";
   narratorPersona: "brenda" | "brandon";
@@ -30,6 +32,8 @@ export interface UserSettings {
 const DEFAULT_SETTINGS: UserSettings = {
   ollamaModel: "gemma4:e2b",
   ollamaBaseUrl: "",
+  llmApiKey: "",
+  llmApiBaseUrl: "https://openrouter.ai/api/v1",
   roastMode: "standard",
   roastLanguage: "english",
   narratorPersona: "brenda",
@@ -78,6 +82,7 @@ export function clearSensitiveSettings(): void {
   const current = getStoredSettings();
   saveSettings({
     ...current,
+    llmApiKey: "",
     elevenLabsApiKey: "",
     noizApiKey: "",
   });
@@ -176,9 +181,9 @@ export function SettingsDialog() {
             </div>
           </section>
 
-          {/* Ollama Settings */}
+          {/* LLM Settings */}
           <section className="space-y-3">
-            <h3 className="font-semibold text-foreground">Ollama (LLM)</h3>
+            <h3 className="font-semibold text-foreground">LLM Provider</h3>
             <div className="grid gap-3">
               <div>
                 <Label className="text-sm font-medium text-muted-foreground">Model</Label>
@@ -188,16 +193,40 @@ export function SettingsDialog() {
                   placeholder="gemma4:e2b"
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Use any local model tag available in your Ollama (for example: <code>gemma4:e2b</code>,{" "}
-                  <code>llama3.1:8b</code>, <code>qwen2.5:7b</code>).
+                  Use any model ID your selected endpoint supports (for example: <code>gemma4:e2b</code>,{" "}
+                  <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-3.5-sonnet</code>,{" "}
+                  <code>google/gemini-2.0-flash-001</code>).
                 </p>
               </div>
               <div>
-                <Label className="text-sm font-medium text-muted-foreground">Base URL</Label>
+                <Label className="text-sm font-medium text-muted-foreground">Local endpoint URL (optional)</Label>
                 <Input
                   value={settings.ollamaBaseUrl}
                   onChange={(e) => setSettings({ ...settings, ollamaBaseUrl: e.target.value })}
                   placeholder="https://your-llm-endpoint.example.com"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use this for Ollama or any custom endpoint exposing <code>/api/chat</code>.
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-muted-foreground">API key (optional)</Label>
+                <Input
+                  type="password"
+                  value={settings.llmApiKey}
+                  onChange={(e) => setSettings({ ...settings, llmApiKey: e.target.value })}
+                  placeholder="sk-..."
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  If set, this takes priority and uses an OpenAI-compatible <code>/chat/completions</code> API.
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-muted-foreground">API base URL (optional)</Label>
+                <Input
+                  value={settings.llmApiBaseUrl}
+                  onChange={(e) => setSettings({ ...settings, llmApiBaseUrl: e.target.value })}
+                  placeholder="https://openrouter.ai/api/v1"
                 />
               </div>
             </div>
