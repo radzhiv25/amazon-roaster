@@ -1,11 +1,37 @@
 import "server-only";
-import { chromium } from "playwright";
+import chromium from "@sparticuz/chromium";
+import { chromium as coreChromium } from "playwright-core";
 import type { ProductData } from "@/types";
 
 const STEALTH_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const SCRAPE_TIMEOUT_MS = 15_000;
+
+function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.AWS_EXECUTION_ENV
+  );
+}
+
+async function launchBrowser() {
+  if (isServerlessRuntime()) {
+    return coreChromium.launch({
+      headless: true,
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+    });
+  }
+
+  // Local/dev fallback: use Playwright package browser install.
+  const playwright = await import("playwright");
+  return playwright.chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+  });
+}
 
 function emptyProduct(): ProductData {
   return {
@@ -59,10 +85,7 @@ export async function scrapeAmazonProduct(productUrl: string): Promise<ProductDa
 
   return withTimeout(
     (async () => {
-      const browser = await chromium.launch({
-        headless: true,
-        args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-      });
+      const browser = await launchBrowser();
 
       try {
         const context = await browser.newContext({
